@@ -96,52 +96,8 @@ function createRenderer(options) {
       // 最后将新的文本节点内容设置给容器元素
       setElementText(container, n2.children);
     } else if (Array.isArray(n2.children)) {
-      let lastIndex = 0;
-      for (let i = 0; i < n2.children.length; i++) {
-        const newVNode = n2.children[i];
-        let findable = false; // 新节点是否存在于旧节点
-        for (let j = 0; j < n1.children.length; j++) {
-          const oldVNode = n1.children[j];
-          if (newVNode.key == oldVNode.key) {
-            findable = true;
-            patch(oldVNode, newVNode, container);
-            // 做DOM移动
-            if (j < lastIndex) {
-              const prevVNode = n2.children[i - 1];
-              if (prevVNode) {
-                const anchor = prevVNode.el.nextSibling;
-                // !!!很好奇，为啥h1insert之后会跑到最后，而不是新增
-                insert(newVNode.el, container, anchor);
-              }
-            } else {
-              lastIndex = j;
-            }
-            break;
-          }
-        }
-        // 增加新节点
-        if (!findable) {
-          const prevVNode = n2.children[i - 1];
-          let anchor = null;
-          if (prevVNode) {
-            anchor = prevVNode.el.nextSibling;
-          } else {
-            anchor = container.firstChild;
-          }
-          patch(null, newVNode, container, anchor);
-        }
-        // 删除旧节点
-        for (let i = 0; i < n1.children.length; i++) {
-          const oldVNode = n1.children[i];
-          // 拿旧子节点 oldVNode 去新的一组子节点中寻找具有相同 key 值的节点
-          const has = n2.children.find(vnode => vnode.key === oldVNode.key);
-          if (!has) {
-            // 如果没有找到具有相同 key 值的节点，则说明需要删除该节点
-            // 调用 unmount 函数将其卸载
-            unmount(oldVNode, container);
-          }
-        }
-      }
+      // 封装 patchKeyedChildren 函数处理两组子节点
+      patchKeyedChildren(n1, n2, container);
     } else {
       // 代码运行到这里，说明新子节点不存在,清空新节点
       if (Array.isArray(n1.children)) {
@@ -150,6 +106,21 @@ function createRenderer(options) {
         setElementText(container, "");
       }
     }
+  }
+  // 双端算法
+  function patchKeyedChildren(n1, n2, container) {
+    const oldChildren = n1.children;
+    const newChildren = n2.children;
+    // 四个索引值
+    let oldStartIdx = 0;
+    let oldEndIdx = oldChildren.length - 1;
+    let newStartIdx = 0;
+    let newEndIdx = newChildren.length - 1;
+    // 指定索引对应的node节点
+    let oldStartVNode = oldChildren[oldStartIdx];
+    let oldEndVNode = oldChildren[oldEndIdx];
+    let newStartVNode = newChildren[newStartIdx];
+    let newEndVNode = newChildren[newEndIdx];
   }
   // 卸载操作
   function unmount(vnode) {
