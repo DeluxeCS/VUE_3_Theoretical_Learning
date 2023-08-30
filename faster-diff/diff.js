@@ -1,4 +1,44 @@
 const { effect, ref } = VueReactivity;
+function getSequence(arr) {
+  const p = arr.slice();
+  const result = [0];
+  let i, j, u, v, c;
+  const len = arr.length;
+  for (i = 0; i < len; i++) {
+    const arrI = arr[i];
+    if (arrI !== 0) {
+      j = result[result.length - 1];
+      if (arr[j] < arrI) {
+        p[i] = j;
+        result.push(i);
+        continue;
+      }
+      u = 0;
+      v = result.length - 1;
+      while (u < v) {
+        c = ((u + v) / 2) | 0;
+        if (arr[result[c]] < arrI) {
+          u = c + 1;
+        } else {
+          v = c;
+        }
+      }
+      if (arrI < arr[result[u]]) {
+        if (u > 0) {
+          p[i] = result[u - 1];
+        }
+        result[u] = i;
+      }
+    }
+  }
+  u = result.length;
+  v = result[u - 1];
+  while (u-- > 0) {
+    result[u] = v;
+    v = p[v];
+  }
+  return result;
+}
 
 function createRenderer(options) {
   const { createElement, setElementText, insert, patchProps, setText, createText } = options;
@@ -79,6 +119,34 @@ function createRenderer(options) {
     // 第二步：更新 children
     patchChildren(n1, n2, el);
   }
+  // 卸载操作
+  function unmount(vnode) {
+    const parent = vnode.el.parentNode;
+    if (parent) parent.removeChild(vnode.el);
+  }
+
+  /**
+   * 挂载方法定义
+   * @param {*} vnode
+   * @param {*} container
+   * @param {*} anchor
+   */
+  function mountElement(vnode, container, anchor) {
+    const el = (vnode.el = createElement(vnode.type));
+    if (typeof vnode.children === "string") {
+      setElementText(el, vnode.children);
+    } else if (Array.isArray(vnode.children)) {
+      vnode.children.forEach(child => {
+        patch(null, child, el);
+      });
+    }
+    if (vnode.props) {
+      for (const key in vnode.props) {
+        patchProps(el, key, null, vnode.props[key]);
+      }
+    }
+    insert(el, container, anchor);
+  }
   /**
    * 更新子节点内容
    * @param {*} n1 旧node
@@ -107,97 +175,111 @@ function createRenderer(options) {
       }
     }
   }
-  // 双端算法
+  // 快速算法预处理-两头重复数据
   function patchKeyedChildren(n1, n2, container) {
     const oldChildren = n1.children;
     const newChildren = n2.children;
-    // 四个索引值
-    let oldStartIdx = 0;
-    let oldEndIdx = oldChildren.length - 1;
-    let newStartIdx = 0;
-    let newEndIdx = newChildren.length - 1;
-    // 指定索引对应的node节点
-    let oldStartVNode = oldChildren[oldStartIdx];
-    let oldEndVNode = oldChildren[oldEndIdx];
-    let newStartVNode = newChildren[newStartIdx];
-    let newEndVNode = newChildren[newEndIdx];
-    while (oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx) {
-      // 双端比较
-      if (!oldStartVNode) {
-        oldStartVNode = oldChildren[++oldStartIdx];
-      } else if (!oldEndVNode) {
-        oldEndVNode = oldChildren[--oldEndIdx];
-      } else if (oldStartVNode.key === newStartVNode.key) {
-        patch(oldStartVNode, newStartVNode, container);
-        oldStartVNode = oldChildren[++oldStartIdx];
-        newStartVNode = newChildren[++newStartIdx];
-      } else if (oldEndVNode.key === newEndVNode.key) {
-        patch(oldEndVNode, newEndVNode, container);
-        oldEndVNode = oldChildren[--oldEndIdx];
-        newEndVNode = newChildren[--newEndIdx];
-      } else if (oldStartVNode.key === newEndVNode.key) {
-        patch(oldStartVNode, newEndVNode, container);
-        insert(oldEndVNode.el, container, newEndVNode.el);
-        oldStartVNode = oldChildren[++oldStartIdx];
-        newEndVNode = newChildren[--newEndIdx];
-      } else if (oldEndVNode.key === newStartVNode.key) {
-        patch(oldEndVNode, newStartVNode, container);
-        insert(oldEndVNode.el, container, oldStartVNode.el);
-        oldEndVNode = oldChildren[--oldEndIdx];
-        newStartVNode = newChildren[++newStartIdx];
-      } else {
-        // 做特殊处理，当一次比较未发现重复key时
-        const idxInOld = oldChildren.findIndex(idx => idx === newStartVNode.key);
-        if (idxInOld > 0) {
-          const moveVNode = oldChildren[idxInOld];
-          patch(moveVNode, newStartVNode, container);
-          insert(moveVNode.el, container, oldStartVNode.el);
-          oldChildren[idxInOld] = undefined;
+    // 头部开始处理数据
+    let j = 0;
+    let oldVNode = oldChildren[j];
+    let newVNode = newChildren[j];
+    while (oldVNode.key === newVNode.key) {
+      patch(oldVNode, newVNode, container);
+      j++;
+      oldVNode = oldChildren[j];
+      newVNode = newChildren[j];
+    }
+    // 尾端处理数据
+    let oldEnd = oldChildren.length - 1;
+    let newEnd = newChildren.length - 1;
+    oldVNode = oldChildren[oldEnd];
+    newVNode = newChildren[newEnd];
+    while (oldVNode.key === newVNode.key) {
+      patch(oldVNode, newVNode, container);
+      oldEnd--;
+      newEnd--;
+      oldVNode = oldChildren[oldEnd];
+      newVNode = newChildren[newEnd];
+    }
+    // 未匹配数据处理（新节点）
+    if (j <= newEnd && j > oldEnd) {
+      // 获取dom迁移的锚点位置
+      const anchorIndex = newEnd + 1;
+      const anchor = anchorIndex > newChildren.length ? null : newChildren[anchorIndex];
+      while (j <= newEnd) {
+        patch(null, newChildren[j++], container, anchor);
+      }
+    } else if (j <= oldEnd && j > newEnd) {
+      // 未匹配数据处理（旧节点）
+      while (j <= oldEnd) {
+        unmount(oldChildren(j++));
+      }
+    } else {
+      // 判断是否有节点需要移动，以及应该如何移动；
+      const count = newEnd - j + 1;
+      const source = new Array(count);
+      source.fill(-1);
+      // 找出那些需要被添加或移除的节点
+      // 存储新的一组节点的对应旧组节点的DOM真是索引
+      const oldStart = j;
+      const newStart = j;
+      let moved = false;
+      let pos = 0;
+      const keyIndex = {}; // 构建索引表
+      for (let i = newStart; i <= newEnd; i++) {
+        keyIndex[newChildren[i].key] = i;
+      }
+      // 新增 patched 变量，代表更新过的节点数量
+      let patched = 0;
+      for (let i = oldStart; i <= oldEnd; i++) {
+        oldVNode = oldChildren[i];
+        if (patched < count) {
+          // ^以keyIndex为介质，新旧节点一定存在相同的KEY
+          const k = keyIndex[oldVNode.key];
+          if (typeof k !== "undefined") {
+            newVNode = newChildren[k];
+            patch(oldVNode, newVNode, container);
+            source[k - newStart] = i;
+            patched++;
+            if (k < pos) {
+              moved = true;
+            } else {
+              pos = k;
+            }
+          } else {
+            unmount(oldVNode);
+          }
         } else {
-          patch(null, newStartVNode, container, oldStartVNode.el);
+          unmount(oldVNode);
         }
-        newStartVNode = newChildren[++newStartIdx];
+      }
+      if (moved) {
+        const seq = getSequence(source);
+        let s = seq.length - 1;
+        let i = count - 1;
+        for (i; i >= 0; i--) {
+          if (source[i] === -1) {
+            const pos = i + newStart;
+            const newVNode = newChildren[pos];
+            const nextPos = pos + 1;
+            const anchor = nextPos < newChildren.length ? newChildren[nextPos].el : null;
+            patch(null, newVNode, container, anchor);
+          } else if (i !== seq[s]) {
+            // 该节点在新的一组子节点中的真实位置索引
+            const pos = i + newStart;
+            const newVNode = newChildren[pos];
+            // 该节点的下一个节点的位置索引
+            const nextPos = pos + 1;
+            // 锚点
+            const anchor = nextPos < newChildren.length ? newChildren[nextPos].el : null;
+            // 移动
+            insert(newVNode.el, container, anchor);
+          } else {
+            s--;
+          }
+        }
       }
     }
-    // 循环结束后检查索引值的情况，
-    if (oldEndIdx < oldStartIdx && newStartIdx <= newEndIdx) {
-      // 如果满足条件，则说明有新的节点遗留，需要挂载它们
-      for (let i = newStartIdx; i <= newEndIdx; i++) {
-        patch(null, newChildren[i], container, oldStartVNode.el);
-      }
-    } else if (newEndIdx < newStartIdx && oldStartIdx <= oldEndIdx) {
-      for (let i = oldStartIdx; i <= oldEndIdx; i++) {
-        unmount(oldChildren[i]);
-      }
-    }
-  }
-  // 卸载操作
-  function unmount(vnode) {
-    const parent = vnode.el.parentNode;
-    if (parent) parent.removeChild(vnode.el);
-  }
-
-  /**
-   * 挂载方法定义
-   * @param {*} vnode
-   * @param {*} container
-   * @param {*} anchor
-   */
-  function mountElement(vnode, container, anchor) {
-    const el = (vnode.el = createElement(vnode.type));
-    if (typeof vnode.children === "string") {
-      setElementText(el, vnode.children);
-    } else if (Array.isArray(vnode.children)) {
-      vnode.children.forEach(child => {
-        patch(null, child, el);
-      });
-    }
-    if (vnode.props) {
-      for (const key in vnode.props) {
-        patchProps(el, key, null, vnode.props[key]);
-      }
-    }
-    insert(el, container, anchor);
   }
 
   return {
@@ -288,18 +370,23 @@ function normalizeClass() {
 const oldVNode = {
   type: "div",
   children: [
-    { type: "h1", children: "OLD1", key: 1 },
-    { type: "h2", children: "OLD2", key: 2 },
-    { type: "h3", children: "OLD3", key: 3 },
-    // { type: "h4", children: "NEW4", key: 4 },
+    { type: "p", children: "OLD1", key: 1 },
+    { type: "p", children: "OLD2", key: 2 },
+    { type: "p", children: "OLD3", key: 3 },
+    { type: "p", children: "OLD3", key: 4 },
+    { type: "p", children: "OLD3", key: 6 },
+    { type: "p", children: "OLD3", key: 5 },
   ],
 };
 const newVNode = {
   type: "div",
   children: [
-    { type: "h3", children: "NEW3", key: 3 },
-    { type: "h1", children: "NEW1", key: 1 },
-    { type: "h2", children: "NEW2", key: 2 },
+    { type: "p", children: "NEW1", key: 1 },
+    { type: "p", children: "NEW2", key: 3 },
+    { type: "p", children: "NEW3", key: 4 },
+    { type: "p", children: "NEW4", key: 2 },
+    { type: "p", children: "NEW5", key: 7 },
+    { type: "p", children: "NEW6", key: 5 },
   ],
 };
 renderer.render(oldVNode, document.querySelector("#app"));

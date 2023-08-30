@@ -1,5 +1,4 @@
 const container = document.getElementById("container");
-const old1 = container.children[container.children.length - 1];
-const newH1 = container.firstChild;
-newH1.textContent = "标题2";
-container.insertBefore(newH1, null);
+const child1 = document.getElementById("child1");
+const child2 = document.getElementById("child2");
+container.insertBefore(child2, child1);
