@@ -1,4 +1,4 @@
-const { effect, ref } = VueReactivity;
+const { effect, ref, reactive, resolveProps, shallowReactive } = VueReactivity;
 // 递增子序列
 function getSequence(arr) {
   const p = arr.slice();
@@ -63,7 +63,6 @@ function createRenderer(options) {
    * @param {*} anchor
    */
   function patch(n1, n2, container, anchor) {
-    debugger;
     // 当前后打补丁的type不一致
     if (n1 && n1.type !== n2.type) {
       // 卸载
@@ -290,12 +289,130 @@ function createRenderer(options) {
   // 组件挂载
   function mountComponent(vnode, container, anchor) {
     const componentOptions = vnode.type;
-    const { render, data } = componentOptions;
-    const state = reactive(data());
-    effect(() => {
-      const subTree = render.call(state, state);
-      patch(null, subTree, container, anchor);
+    const { render, data, beforeCreate, created, beforeMount, mounted, beforeUpdate, updated, props: propsOption } = componentOptions;
+    beforeCreate && beforeCreate();
+    const state = reactive(data()); // 数据状态
+    const [props, attrs] = resolveProps(propsOption, vnode.props);
+    const instance = {
+      state,
+      props: shallowReactive(props),
+      isMounted: false,
+      subTree: null,
+    };
+    vnode.component = instance;
+    // 创建渲染上下文对象，本质上是组件实例的代理
+    const renderContext = new Proxy(instance, {
+      get(t, k, r) {
+        // 取得组件自身状态与 props 数据
+        const { state, props } = t;
+        // 先尝试读取自身状态数据,如果没有，则从props中读取
+        if (state && k in state) {
+          return state[k];
+        } else if (k in props) {
+          return props[k];
+        } else {
+          console.error("不存在");
+        }
+      },
+      set(t, k, v, r) {
+        const { state, props } = t;
+        if (state && k in state) {
+          state[k] = v;
+        } else if (k in props) {
+          console.warn(`Attempting to mutate prop "${k}". Props are readonly.`);
+        } else {
+          console.error("不存在");
+        }
+      },
     });
+    created && created.call(renderContext);
+    effect(
+      () => {
+        const subTree = render.call(state, state);
+        if (!instance.isMounted) {
+          beforeMount && beforeMount.call(state);
+          patch(null, subTree, container, anchor);
+          instance.isMounted = true;
+          mounted && mounted.call(state);
+        } else {
+          beforeUpdate && beforeUpdate.call(state);
+          patch(instance.subTree, subTree, container, anchor);
+          updated && updated.call(state);
+        }
+        instance.subTree = subTree;
+      },
+      {
+        scheduler: queueJob,
+      }
+    );
+  }
+  // 组件更新
+  function patchComponent(n1, n2, anchor) {
+    const instance = (n2.component = n1.component);
+    const { props } = instance;
+    if (hasPropsChanged(n1.props, n2.props)) {
+      const [nextProps] = resolveProps(n2.type.props, n2.props);
+      for (const k in nextProps) {
+        props[k] = nextProps[k];
+      }
+      for (const k in props) {
+        if (!(k in nextProps)) delete props[k];
+      }
+    }
+  }
+  // props的数据变更
+  function hasPropsChanged(prevProps, nextProps) {
+    const nextKeys = Object.keys(nextProps);
+    // 如果新旧 props 的数量变了，则说明有变化
+    if (nextKeys.length !== Object.keys(prevProps).length) {
+      return true;
+    }
+    // 只有
+    for (let i = 0; i < nextKeys.length; i++) {
+      const key = nextKeys[i];
+      // 有不相等的 props，则说明有变化
+      if (nextProps[key] !== prevProps[key]) return true;
+    }
+    return false;
+  }
+  /**
+   * 组件传递的props在组件自身vnode上有定义，则视为合法props
+   * @param {*} options 组件传递的props
+   * @param {*} propsData 节点自身元素
+   * @returns
+   */
+  function resolveProps(options, propsData) {
+    const props = {};
+    const attrs = {};
+
+    for (const key in propsData) {
+      if (key in options) {
+        props[key] = propsData[key];
+      } else {
+        attrs[key] = propsData[key];
+      }
+    }
+    return [props, attrs];
+  }
+  // 创建一个调度器、缓冲序列，通过promise的异步机制实现对副作用函数的缓冲
+  const queue = new Set();
+  let isFlushing = false;
+  const p = Promise.resolve();
+  function queueJob(job) {
+    queue.add(job);
+    if (!isFlushing) {
+      isFlushing = true;
+      p.then(() => {
+        try {
+          queue.forEach(job => {
+            job();
+          });
+        } finally {
+          isFlushing = false;
+          queue.clear = 0;
+        }
+      });
+    }
   }
   return {
     render,
