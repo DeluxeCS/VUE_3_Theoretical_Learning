@@ -286,12 +286,13 @@ function createRenderer(options) {
       }
     }
   }
+
   // 组件挂载
   function mountComponent(vnode, container, anchor) {
     const componentOptions = vnode.type;
-    const { render, data, beforeCreate, created, beforeMount, mounted, beforeUpdate, updated, props: propsOption } = componentOptions;
+    const { render, data, beforeCreate, created, beforeMount, mounted, beforeUpdate, updated, props: propsOption, setup } = componentOptions;
     beforeCreate && beforeCreate();
-    const state = reactive(data()); // 数据状态
+    const state = data ? reactive(data()) : null; // 数据状态
     const [props, attrs] = resolveProps(propsOption, vnode.props);
     const instance = {
       state,
@@ -299,6 +300,16 @@ function createRenderer(options) {
       isMounted: false,
       subTree: null,
     };
+
+    const setupContext = { attrs, emit };
+    const setupResult = setup(shallowReadonly(instance.props), setupContext);
+    let setupState = null;
+    if (typeof setupResult === "function") {
+      if (render) console.error("setup 函数返回渲染函数，render 选项将被忽略"); // 将 setupResult 作为渲染函数
+      render = setupResult;
+    } else {
+      setupState = setupResult;
+    }
     vnode.component = instance;
     // 创建渲染上下文对象，本质上是组件实例的代理
     const renderContext = new Proxy(instance, {
@@ -310,6 +321,8 @@ function createRenderer(options) {
           return state[k];
         } else if (k in props) {
           return props[k];
+        } else if (setupState && k in setupState) {
+          return setupState[k];
         } else {
           console.error("不存在");
         }
@@ -320,6 +333,8 @@ function createRenderer(options) {
           state[k] = v;
         } else if (k in props) {
           console.warn(`Attempting to mutate prop "${k}". Props are readonly.`);
+        } else if (setupState && k in setupState) {
+          setupState[k] = v;
         } else {
           console.error("不存在");
         }
@@ -345,6 +360,21 @@ function createRenderer(options) {
         scheduler: queueJob,
       }
     );
+  }
+  // 定义 emit 函数，它接收两个参数
+  // event: 事件名称
+  // payload: 传递给事件处理函数的参数
+  function emit(event, ...payload) {
+    // 根据约定对事件名称进行处理，例如 change --> onChange
+    const eventName = `on${event[0].toUpperCase() + ent.slice(1)}`;
+    // 根据处理后的事件名称去 props 中寻找对应的事件处理函数
+    const handler = instance.props[eventName];
+    if (handler) {
+      // 调用事件处理函数并传递参数
+      handler(...payload);
+    } else {
+      console.error("事件不存在");
+    }
   }
   // 组件更新
   function patchComponent(n1, n2, anchor) {
@@ -386,7 +416,7 @@ function createRenderer(options) {
     const attrs = {};
 
     for (const key in propsData) {
-      if (key in options) {
+      if (key in options || key.startsWith("on")) {
         props[key] = propsData[key];
       } else {
         attrs[key] = propsData[key];
