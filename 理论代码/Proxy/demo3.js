@@ -34,20 +34,14 @@ const obj = new Proxy(data, {
 });
 // 函数封装
 function track(target, key) {
-  console.log("get", target, key);
   if (!activeEffect) return target[key]; // 无方法时，直接返回结果.
   let depsMap = bucket.get(target); // 获取目标对象
-  if (!depsMap) {
-    bucket.set(target, (depsMap = new Map())); // 如果不存在，则创建目标对象
-  }
+  !depsMap && bucket.set(target, (depsMap = new Map())); // 如果不存在，则创建目标对象
   let deps = depsMap.get(key);
-  if (!deps) {
-    depsMap.set(key, (deps = new Set())); // 如果不存在，则创建目标key
-  }
+  !deps && depsMap.set(key, (deps = new Set())); // 如果不存在，则创建目标key
   deps.add(activeEffect);
 }
 function trigger(target, key) {
-  console.log("set", target, key);
   const depsMap = bucket.get(target);
   if (!depsMap) return;
   const deps = depsMap.get(key);
@@ -56,7 +50,6 @@ function trigger(target, key) {
 
 // 执行副作用函数注册方法
 effect(() => {
-  console.log("副作用函数执行啦");
   document.body.innerText = obj.text;
 });
 

@@ -46,39 +46,28 @@ const obj = new Proxy(data, {
     trigger(target, key);
   },
 });
+
 // 函数封装
 function track(target, key) {
-  console.log("get", target, key);
   if (!activeEffect) return target[key]; // 无方法时，直接返回结果.
   let depsMap = bucket.get(target); // 获取目标对象
-  if (!depsMap) {
-    bucket.set(target, (depsMap = new Map())); // 如果不存在，则创建目标对象
-  }
+  !depsMap && bucket.set(target, (depsMap = new Map())); // 如果不存在，则创建目标对象
   let deps = depsMap.get(key);
-  if (!deps) {
-    depsMap.set(key, (deps = new Set())); // 如果不存在，则创建目标key
-  }
+  !deps && depsMap.set(key, (deps = new Set())); // 如果不存在，则创建目标key
   deps.add(activeEffect);
   activeEffect.deps.push(deps);
-  console.log("副作用函数列表", activeEffect.deps);
-  console.log("当前桶桶对象对应的weakMap", depsMap);
 }
+
 function trigger(target, key) {
-  console.log("set", target, key);
   const depsMap = bucket.get(target);
   if (!depsMap) return;
   const effects = depsMap.get(key);
-  const effectsRun = new Set(effects);
-  debugger;
-  effectsRun.forEach(func => {
-    console.log("set前清空一波");
-    func();
-  });
+  const effectsToRun = new Set(effects);
+  effectsToRun.forEach(func => func());
 }
 
 // 执行副作用函数注册方法
 effect(() => {
-  console.log(1, "=>副作用函数执行啦");
   document.body.innerText = obj.text ? obj.notExist : "no";
 });
 

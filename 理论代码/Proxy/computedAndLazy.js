@@ -78,7 +78,6 @@ const obj = new Proxy(data, {
 });
 // 函数封装
 function track(target, key) {
-  console.log("get", target, key);
   if (!activeEffect) return target[key]; // 无方法时，直接返回结果.
   let depsMap = bucket.get(target); // 获取目标对象
   if (!depsMap) bucket.set(target, (depsMap = new Map())); // 如果不存在，则创建目标对象
@@ -88,7 +87,6 @@ function track(target, key) {
   activeEffect.deps.push(deps);
 }
 function trigger(target, key) {
-  console.log("set", target, key);
   const depsMap = bucket.get(target);
   if (!depsMap) return;
   const effects = depsMap.get(key);

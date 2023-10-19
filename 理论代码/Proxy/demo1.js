@@ -14,12 +14,12 @@ function effect() {
 // 代理对象
 const obj = new Proxy(data, {
   get(target, key) {
-    console.log("get");
+    console.log("get", target, key);
     bucket.add(effect);
     return target[key];
   },
   set(target, key, newVal) {
-    console.log("set");
+    console.log("set", target, key, newVal);
     target[key] = newVal;
     bucket && bucket.forEach(func => func());
     return true;
@@ -29,5 +29,5 @@ const obj = new Proxy(data, {
 // 执行函数
 effect();
 setInterval(() => {
-  obj.text += "6";
-}, 1000);
+  obj.text = obj.text + "6";
+}, 5000);
