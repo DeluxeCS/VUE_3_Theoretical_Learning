@@ -32,8 +32,35 @@ function createRenderer(options) {
       }
     } else if (typeof type === "object") {
       // 组件
-    } else {
-      // 其他
+    } else if (typeof type === Text) {
+      // 文本
+      if (!n1) {
+        const el = (n2.el = options.createText(n2.children));
+        options.insert(el, container);
+      } else {
+        const el = (n2.el = n1.el);
+        if (n2.children !== n1.children) {
+          options.setText(el, n2.children);
+        }
+      }
+    } else if (typeof type === Comment) {
+      // 注释节点
+      if (!n1) {
+        const el = (n2.el = options.createComment(n2.children));
+        options.insert(el, container);
+      } else {
+        const el = (n2.el = n1.el);
+        if (n2.children !== n1.children) {
+          options.setText(el, n2.children);
+        }
+      }
+    } else if (typeof type === Fragment) {
+      // 片段
+      if (!n1) {
+        n2.children.forEach(c => patch(null, c, container));
+      } else {
+        patchChildren(n1, n2, container);
+      }
     }
   }
   // 做特殊处理
@@ -58,8 +85,48 @@ function createRenderer(options) {
     }
     options.insert(el, container);
   }
-  // 更新
-  function patchElement(n1, n2) {}
+  // 更新节点
+  function patchElement(n1, n2) {
+    const el = (n2.el = n1.el);
+    const oldProps = n1.props;
+    const newProps = n2.props;
+    for (const key in newProps) {
+      if (newProps[key] !== oldProps[key]) {
+        options.patchProps(el, key, oldProps[key], newProps[key], shouldSetAsProps);
+      }
+    }
+    for (const key in oldProps) {
+      if (!(key in newProps)) {
+        options.patchProps(el, key, oldProps[key], null, shouldSetAsProps);
+      }
+    }
+    patchChildren(n1, n2, el);
+  }
+  // 更新子节点
+  function patchChildren(n1, n2, container) {
+    if (typeof n2.children === "string") {
+      if (Array.isArray(n1.children)) {
+        n1.children.forEach(c => unmount(c));
+      }
+      setElementText(container, n2.children);
+    } else if (Array.isArray(n2.children)) {
+      if (Array.isArray(n1.children)) {
+        // 将旧的一组子节点全部卸载
+        n1.children.forEach(c => unmount(c));
+        // 再将新的一组子节点全部挂载到容器中
+        n2.children.forEach(c => patch(null, c, container));
+      } else {
+        setElementText(container, "");
+        n2.children.forEach(c => patchElement(null, c, container));
+      }
+    } else {
+      if (Array.isArray(n1.children)) {
+        n1.children.forEach(c => unmount(c));
+      } else if (typeof n1.children === "string") {
+        setElementText(container, "");
+      }
+    }
+  }
 
   return {
     render,
@@ -88,6 +155,7 @@ const renderer = createRenderer({
       if (nextValue) {
         if (!invoker) {
           invoker = el._vei[key] = e => {
+            if (e.timeStamp < invoker.attached) return;
             if (Array.isArray(invoker.value)) {
               invoker.value.forEach(func => func(e));
             } else {
@@ -95,6 +163,7 @@ const renderer = createRenderer({
             }
           };
           invoker.value = nextValue;
+          invoker.attached = performance.now();
           el.addEventListener(name, invoker);
         } else {
           invoker.value = nextValue;
@@ -117,29 +186,50 @@ const renderer = createRenderer({
   },
   // 从父级卸载指定子集
   unmount(vNode) {
+    if (vNode.type === Fragment) {
+      vNode.children.forEach(c => unmount(c));
+      return;
+    }
     const parent = vNode.el.parentNode;
     if (parent) parent.removeChild(vNode.el);
   },
+  createText(text) {
+    return document.createTextNode(text);
+  },
+  createComment(text) {
+    return document.createComment(text);
+  },
+  setText(el, text) {
+    el.nodeValue = text;
+  },
 });
 
-const vNode = {
-  type: "div",
-  props: {
-    id: "foo",
-    // normalizeClass将数组、对象、字符串转换为单纯的字符串
-    // class: normalizeClass(["foo bar", { baz: true }]),
-    class: "foo bar",
-    onClick: () => {
-      console.log("666");
-    },
-  },
-  children: [
-    {
-      type: "h1",
-      children: "999",
-    },
-  ],
-};
+const bol = ref(false);
 effect(() => {
-  renderer.render(vNode, document.getElementById("app"));
+  const vNode = {
+    type: "div",
+    props: bol.value
+      ? {
+          // normalizeClass将数组、对象、字符串转换为单纯的字符串
+          // class: normalizeClass(["foo bar", { baz: true }]),
+          onClick: () => {
+            console.log("666");
+          },
+        }
+      : {},
+    children: [
+      {
+        type: "h1",
+        props: {
+          onClick: () => {
+            bol.value = true;
+          },
+        },
+        children: "999",
+      },
+    ],
+  };
+  renderer.render(vNode, document.querySelector("#app"));
+  console.log(vNode);
 });
+// bol.value = true;
