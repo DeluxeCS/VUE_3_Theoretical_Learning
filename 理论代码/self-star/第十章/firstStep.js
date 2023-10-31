@@ -112,83 +112,7 @@ function createRenderer(options) {
       options.setElementText(container, n2.children);
     } else if (Array.isArray(n2.children)) {
       if (Array.isArray(n1.children)) {
-        const oldChildren = n1.children;
-        const newChildren = n2.children;
-        // 方案一、type类型一致时候
-        // const oldLen = oldChildren.length;
-        // const newLen = newChildren.length;
-        // const commonLength = Math.min(oldLen, newLen);
-        // // 当心纠结点length不相等
-        // for (let i = 0; i < commonLength; i++) {
-        //   patch(oldChildren[i], newChildren[i], container);
-        // }
-        // // 如果 newLen > oldLen，说明有新子节点需要挂载
-        // if (newLen > oldLen) {
-        //   for (let i = commonLength; i < newLen; i++) {
-        //     patch(null, newChildren[i], container);
-        //   }
-        //   // 如果 oldLen > newLen，说明有旧子节点需要卸载
-        // } else if (oldLen > newLen) {
-        //   for (let i = commonLength; i < oldLen; i++) {
-        //     options.unmount(oldChildren[i]);
-        //   }
-        // }
-        // 方案二、当实现DOM复用，则需要key作为标志位
-        // for (let i = 0; i < newChildren.length; i++) {
-        //   const newVNode = newChildren[i];
-        //   for (let j = 0; j < oldChildren.length; index++) {
-        //     const oldVNode = oldChildren[j];
-        //     if (newVNode.key === oldVNode.key) {
-        //       patch(oldVNode, newVNode, container);
-        //       break;
-        //     }
-        //   }
-        // }
-        // 方案三、以type、key作为标识，实现DOM复用
-        let lastIndex = 0;
-        for (let i = 0; i < newChildren.length; i++) {
-          const newVNode = newChildren[i];
-          let j = 0;
-          let find = false;
-          for (j; j < oldChildren.length; j++) {
-            const oldVNode = oldChildren[j];
-            if (newVNode.key === oldVNode.key) {
-              find = true;
-              patch(oldVNode, newVNode, container);
-              if (j < lastIndex) {
-                // remove
-                const prevVNode = newChildren[i - 1];
-                if (prevVNode) {
-                  const anchor = prevVNode.el.nextSibling;
-                  options.insert(newVNode.el, container, anchor);
-                }
-              } else {
-                lastIndex = j;
-              }
-              break;
-            }
-          }
-          if (!find) {
-            const prevVNode = newChildren[i - 1];
-            let anchor = null;
-            if (prevVNode) {
-              anchor = prevVNode.el.nextSibling;
-            } else {
-              anchor = container.firstChild;
-            }
-            patch(null, newVNode, container, anchor);
-          }
-        }
-        for (let i = 0; i < oldChildren.length; i++) {
-          const oldVNode = oldChildren[i];
-          // 拿旧子节点 oldVNode 去新的一组子节点中寻找具有相同 key 值的节点
-          const has = newChildren.find(vnode => vnode.key === oldVNode.key);
-          if (!has) {
-            // 如果没有找到具有相同 key 值的节点，则说明需要删除该节点
-            // 调用 unmount 函数将其卸载
-            unmount(oldVNode);
-          }
-        }
+        patchKeyedChildren(n1, n2, container);
       } else {
         options.setElementText(container, "");
         n2.children.forEach(c => patchElement(null, c, container));
@@ -201,6 +125,8 @@ function createRenderer(options) {
       }
     }
   }
+  // 双端算法
+  function patchKeyedChildren(n1, n2, container) {}
 
   return {
     render,
