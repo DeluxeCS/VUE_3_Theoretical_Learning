@@ -295,10 +295,10 @@ function createRenderer(options) {
     const state = data ? reactive(data()) : null; // 数据状态
     const [props, attrs] = resolveProps(propsOption, vnode.props);
     const instance = {
-      state,
+      state, // data
       props: shallowReactive(props),
-      isMounted: false,
-      subTree: null,
+      isMounted: false, // 是否已挂在
+      subTree: null, // 组件所渲染的内容，即子树（subTree）
     };
 
     const setupContext = { attrs, emit };
@@ -434,9 +434,7 @@ function createRenderer(options) {
       isFlushing = true;
       p.then(() => {
         try {
-          queue.forEach(job => {
-            job();
-          });
+          queue.forEach(job => job());
         } finally {
           isFlushing = false;
           queue.clear = 0;
