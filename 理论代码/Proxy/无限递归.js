@@ -63,13 +63,8 @@ function track(target, key) {
   }
   deps.add(activeEffect);
   activeEffect.deps.push(deps);
-  console.log("副作用函数列表");
-  console.dir(activeEffect.deps);
-  console.log("当前桶桶对象对应的weakMap");
-  console.dir(depsMap);
 }
 function trigger(target, key) {
-  console.log("set", target, key);
   const depsMap = bucket.get(target);
   if (!depsMap) return;
   const effects = depsMap.get(key);
@@ -88,4 +83,5 @@ function trigger(target, key) {
 // 执行副作用函数注册方法
 effect(() => {
   obj.foo += 1;
+  console.log(obj.foo);
 });
